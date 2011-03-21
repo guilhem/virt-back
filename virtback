@@ -115,38 +115,57 @@ def getoptions():
                   help='backup path & trailing slash [default: \'/KVMBACK/\']' )
 
     # WARNING: Dangerous options below
-    # create an option group g object for scary options
+    # option grouping for scary actions
 
-    g = OptionGroup( p, "Actions", "WARNING:  These options WILL reboot hosts!"  )
+    g1 = OptionGroup( p, "Actions for a list of dom names", "WARNING:  These options WILL bring down guests!"  )
     
-    g.add_option( '--backup-guests', dest='guests', metavar='\'domName1 domName2\'',
-                  default=False, help='backup a list of guests (space delimited)' )
+    g1.add_option( '-b', '--backup', dest='backup', action='store_true', default=False,
+                  help='backup a list of guests (space delimited dom names)' )
+                  
+    g1.add_option( '-r', '--reboot', dest='reboot', action='store_true', default=False,
+                  help='reboot a list of guests (space delimited dom names)' )
+                  
+    g1.add_option( '-s', '--shutdown', dest='shutdown', action='store_true', default=False,
+                  help='shutdown a list of guests (space delimited dom names)' )
+                  
+    g1.add_option( '-c', '--start', dest='start', action='store_true', default=False,
+                  help='start a list of guests (space delimited dom names)' )
+                  
+    g2 = OptionGroup( p, "Actions for all doms", "WARNING:  These options WILL bring down ALL guests!"  )
 
-    g.add_option( '--backup-all-guests', dest='allbackup',
+    g2.add_option( '--backup-all', dest='backupall',
                   action='store_true', default=False,
-                  help='backup and reboot ALL guests' )
+                  help='attempt to shutdown, backup, and start ALL guests' )
 
-    g.add_option( '--reboot-all-guests', dest='allreboot',
+    g2.add_option( '--reboot-all', dest='rebootall',
                   action='store_true', default=False,
-                  help='reboot ALL guests' )
-
-    g.add_option( '--reboot-host', dest='hostreboot',
+                  help='attempt to shutdown and then start ALL guests' )
+                  
+    g2.add_option( '--shutdown-all', dest='shutdownall',
                   action='store_true', default=False,
-                  help='reboot HOST and ALL guests (requires root or sudo)' )
+                  help='attempt to shutdown ALL guests' )
 
-    # attach to the parser p object
-    p.add_option_group( g )
+    g2.add_option( '--start-all', dest='startall',
+                  action='store_true', default=False,
+                  help='attempt to start ALL guests' )
+
+    # attach groups g1 and g2 to the parser p object
+    p.add_option_group( g1 )
+    p.add_option_group( g2 )
 
     # parse options and args
-    options, args = p.parse_args()
+    options, guests = p.parse_args()
 
     # the actionsum should be 1 to continue
-    actionsum = sum( [ bool(options.guests), options.allbackup, options.allreboot, options.hostreboot] )
+    actionsum = sum( [  bool(options.backup), bool(options.reboot), 
+                        bool(options.shutdown), bool(options.start), 
+                        options.backupall, options.rebootall, 
+                        options.shutdownall, options.startall ] )
 
-    if actionsum== 1:
-        return options
+    if actionsum == 1:
+        return options, guests
     else:
-	exit("\nYou must have 1 action, no more, no less.\n\nRun 'virtback -h' for help.\n")
+        exit("\nYou must have 1 action, no more, no less.\n\nRun 'virtback -h' for help.\n")
 
 if __name__ == '__main__':
     """main choice logic"""
@@ -154,35 +173,25 @@ if __name__ == '__main__':
     TODAY = str( date.today() )
     
     # Get the list of dom objects based on cli options
-    options = getoptions()
-
+    options, guests = getoptions()
+    
     c = connect() # connect to libvirt
     domList = [] # this will store the dom objects
-
-    if options.guests: # list of guest names
-        domNameList = options.guests.split()
-        for domName in domNameList:
-            #dom = c.lookupByName( domName )
+    
+    if options.backup or options.reboot or options.shutdown or options.start: # if one of these actions true
+        for guest in guests:
             try:
-                dom = c.lookupByName( domName )
+                dom = c.lookupByName( guest )
                 domList.append( dom )
             except libvirt.libvirtError:
                 pass # logit was registered to libvirt error handler
-        backup( domList )
-
-    elif options.allbackup or options.allreboot or options.hostreboot:
+                
+    elif options.backupall or options.rebootall or options.shutdownall or options.startall:
         for id in c.listDomainsID(): # loop over the running ids
             domList.append( c.lookupByID( id ) )
         
-        if options.allbackup:
-            backup( domList )
-
-        if options.allreboot:
-            shutdown( domList, restart=True )
-
-        if options.hostreboot:
-            shutdown( domList )
-            from os import system
-            logit('restart', 'running init 6, restarting vm host' )
-            system('init 6')
-
+    print domList
+    #if options.backup or options.backupall: backup( domList )
+    #if options.reboot or options.rebootall: reboot( domList )
+    #if options.shutdown or options.shutdownall: shutdown( domList )
+    #if options.start options.startall: start( domList )
