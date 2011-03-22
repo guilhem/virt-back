@@ -45,20 +45,24 @@ def backup( domList ):
             logit( 'error', 'we could not shutdown or destroy ' + dom.name() + 'and the BACKUP FAILED!' )
         else: # backup
             xml = dom.XMLDesc( 0 )
+            xmlfile = '/tmp/' + dom.name() + '.xml'
+            f = open( xmlfile, 'w')
+            f.write( xml )
+            f.close()
             disklist = findall( "<source file='(.*)'/>\n", xml )
             #filename = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
             filename = options.backpath + dom.name() + '.tar.gz'
             tar = tarfile.open( filename, 'w:gz' )
             logit( 'backup', 'starting backup for ' + dom.name() + ' to ' + filename )
+            tar.add( xmlfile ) # add xml to tar
             tar.add( disklist[0] ) # we could loop and tar each disk file
             tar.close()
-            logit( 'backup', 'finished backing for ' + dom.name() )
+            logit( 'backup', 'finished backup for' + dom.name() )
             create([dom]) # start dom
 
 def shutdown( domList, wait=20 ):
     """Accept a list of dom objects, attempt to shutdown"""
     invoke( domList, 'shutdown' ) # if active, attempt shutdown   
-    logit( 'wait', 'waiting ' + str(wait) + ' seconds for guests to shutdown' )
     sleep( wait )
     invoke( domList, 'destroy' ) # if active, attempt destroy
     sleep( wait/2 )
