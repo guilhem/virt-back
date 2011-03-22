@@ -4,11 +4,6 @@
 # Author:    Russell.Ballestrini.net
 # Date:      Fri Mar 18 15:56:59 EDT 2011
 # License:   Public Domain
-#
-# Please leave this banner with the code
-#
-# todo: logging, verbose messages, 
-#
 ############################################
 
 import libvirt
@@ -17,80 +12,69 @@ import syslog
 from re import findall
 from time import sleep
 from datetime import date
-from sys import argv, exit
+from sys import exit
 from optparse import OptionParser, OptionGroup
+from operator import methodcaller
 
 def connect():
     """ connect to qemu with read write access"""
-    url = 'qemu:///system'
+    url = 'qemu:///system' # cli option? reboot all on remote server?
     c = libvirt.open( url )
     libvirt.registerErrorHandler( logit, 'libvirt error - ') # register logit as the error handler
     assert c, 'Failed to open connection ' + url
     return c
 
+def invoke( domList, method, active=True ):
+    """pattern to invoke shutdown, destroy, and start on a list of doms"""
+    f = methodcaller( method )
+    for dom in domList:
+        if dom.isActive() == active:
+            try:
+                logit( method, 'invoking ' + method + ' on ' + dom.name() )
+                f(dom)
+            except libvirt.libvirtError:
+                pass
+
 def backup( domList ):
     """ Accept a domList, run backup proceedure on each """
-    
     tarList = [] # this will be filled with tar filenames
 
-    shutdown( domList ) # shutdown all doms
-    
     for dom in domList:
-        if dom.isActive() == 0:
-            xml = dom.XMLDesc( 0 )           
+        shutdown([dom])
+        if dom.isActive(): # if dom is active
+            logit( 'error', 'we could not shutdown or destroy ' + dom.name() + 'and the BACKUP FAILED!' )
+        else: # backup
+            xml = dom.XMLDesc( 0 )
             disklist = findall( "<source file='(.*)'/>\n", xml )
             #filename = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
             filename = options.backpath + dom.name() + '.tar.gz'
             tar = tarfile.open( filename, 'w:gz' )
-            logit( 'BACKUP', 'starting backup for ' + dom.name() + ' to ' + filename )
+            logit( 'backup', 'starting backup for ' + dom.name() + ' to ' + filename )
             tar.add( disklist[0] ) # we could loop and tar each disk file
             tar.close()
-            logit( 'BACKUP', 'finished backing for ' + dom.name() )
-            dom.create() # start dom
-            sleep(5)
-            if dom.isActive() == 1: # if dom is still active, there was a problem
-                logit( 'START', dom.name() + ' has been started' )
+            logit( 'backup', 'finished backing for ' + dom.name() )
+            create([dom]) # start dom
 
-        else: 
-            logit( 'ERROR', 'we could not shutdown or destroy ' + dom.name() + 'and the BACKUP FAILED!'  )
-
-def shutdown( domList, restart=False, wait=20 ):
+def shutdown( domList, wait=20 ):
     """Accept a list of dom objects, attempt to shutdown"""
-    
-    logit( 'SHUTDOWN', 'attempting to shutdown guests' )
-    for dom in domList:
-        if dom.isActive() == 1: # if active, shutdown    
-            dom.shutdown()
+    invoke( domList, 'shutdown' ) # if active, attempt shutdown   
+    logit( 'wait', 'waiting ' + str(wait) + ' seconds for guests to shutdown' )
+    sleep( wait )
+    invoke( domList, 'destroy' ) # if active, attempt destroy
+    sleep( wait/2 )
 
-    logit( 'WAIT', 'waiting ' + str(wait) + ' seconds for guests to shutdown' )
-    sleep( wait ) 
+def create( domList ):
+    """Accept a list of dom objects, attempt to start"""
+    invoke( domList, 'create', active=False ) # if active, attempt shutdown   
 
-    for dom in domList:
-        if dom.isActive() == 1: # if active, destroy (pull plug)
-            logit( 'DESTROY', 'attempting to destroy ' + dom.name()  )
-            dom.destroy()
-            sleep( wait/2 )
-        if dom.isActive() == 0: 
-            logit( 'SHUTDOWN', dom.name() + ' has been shutdown' )
+def reboot( domList ):
+    """Accept a list of dom objects, attempt to shutdown then start"""
+    shutdown( domList )
+    create( domList )
 
-    if restart: # if restart, turn all doms back on
-        logit( 'START', 'attempting to start guests' )
-        for dom in domList:
-            if dom.isActive() == 1: # if dom is still active, there was a problem
-                logit( 'ERROR', dom.name() + ' did not shutdown or destroy, and is still active' )
-            else:    
-                dom.create()
-        
-        sleep(wait/5)
-
-        for dom in domList:
-            if dom.isActive() == 1: # if dom is still active, there was a problem
-                logit( 'START', dom.name() + ' has been started' )
-
-    return True
 
 def logit( context, message ):
-    """log and error handler"""
+    """syslog and error handler"""
     if type( message ) is tuple:
         message = message[2] # libvirt message is a tuple
 
@@ -107,15 +91,13 @@ def getoptions():
     # create an option parcer object
     p = OptionParser()
 
-    p.add_option( '-v', '--verbose', dest='verbose',
-                  action='store_true', default=False,
+    p.add_option( '-v', '--verbose', dest='verbose', action='store_true', default=False,
                   help='verbose output to stdout [default: no output]' )
 
-    p.add_option( '-p', '--backup-path', dest='backpath', metavar='\'PATH\'', default='/KVMBACK/',
+    p.add_option( '-p', '--path', dest='backpath', metavar='\'PATH\'', default='/KVMBACK/',
                   help='backup path & trailing slash [default: \'/KVMBACK/\']' )
 
-    # WARNING: Dangerous options below
-    # option grouping for scary actions
+    # WARNING: Dangerous options below, option grouping for scary actions
 
     g1 = OptionGroup( p, "Actions for a list of dom names", "WARNING:  These options WILL bring down guests!"  )
     
@@ -128,25 +110,21 @@ def getoptions():
     g1.add_option( '-s', '--shutdown', dest='shutdown', action='store_true', default=False,
                   help='shutdown a list of guests (space delimited dom names)' )
                   
-    g1.add_option( '-c', '--start', dest='start', action='store_true', default=False,
+    g1.add_option( '-c', '--create', dest='create', action='store_true', default=False,
                   help='start a list of guests (space delimited dom names)' )
                   
     g2 = OptionGroup( p, "Actions for all doms", "WARNING:  These options WILL bring down ALL guests!"  )
 
-    g2.add_option( '--backup-all', dest='backupall',
-                  action='store_true', default=False,
+    g2.add_option( '--backup-all', dest='backupall', action='store_true', default=False,
                   help='attempt to shutdown, backup, and start ALL guests' )
 
-    g2.add_option( '--reboot-all', dest='rebootall',
-                  action='store_true', default=False,
+    g2.add_option( '--reboot-all', dest='rebootall', action='store_true', default=False,
                   help='attempt to shutdown and then start ALL guests' )
                   
-    g2.add_option( '--shutdown-all', dest='shutdownall',
-                  action='store_true', default=False,
+    g2.add_option( '--shutdown-all', dest='shutdownall', action='store_true', default=False,
                   help='attempt to shutdown ALL guests' )
 
-    g2.add_option( '--start-all', dest='startall',
-                  action='store_true', default=False,
+    g2.add_option( '--create-all', dest='createall', action='store_true', default=False,
                   help='attempt to start ALL guests' )
 
     # attach groups g1 and g2 to the parser p object
@@ -156,11 +134,10 @@ def getoptions():
     # parse options and args
     options, guests = p.parse_args()
 
-    # the actionsum should be 1 to continue
-    actionsum = sum( [  bool(options.backup), bool(options.reboot), 
-                        bool(options.shutdown), bool(options.start), 
-                        options.backupall, options.rebootall, 
-                        options.shutdownall, options.startall ] )
+    # the actionsum should be 1 to continue, bool math ftw
+    actionsum = sum( [  options.backup, options.reboot, options.shutdown,
+                        options.create, options.backupall, options.rebootall, 
+                        options.shutdownall, options.createall ] )
 
     if actionsum == 1:
         return options, guests
@@ -168,7 +145,7 @@ def getoptions():
         exit("\nYou must have 1 action, no more, no less.\n\nRun 'virtback -h' for help.\n")
 
 if __name__ == '__main__':
-    """main choice logic"""
+    """main application logic"""
 
     TODAY = str( date.today() )
     
@@ -178,20 +155,22 @@ if __name__ == '__main__':
     c = connect() # connect to libvirt
     domList = [] # this will store the dom objects
     
-    if options.backup or options.reboot or options.shutdown or options.start: # if one of these actions true
-        for guest in guests:
-            try:
-                dom = c.lookupByName( guest )
-                domList.append( dom )
-            except libvirt.libvirtError:
-                pass # logit was registered to libvirt error handler
-                
-    elif options.backupall or options.rebootall or options.shutdownall or options.startall:
+    if options.backup or options.reboot or options.shutdown or options.create: # if one of these actions true
+        if guests: # make sure guests list is not empty
+            for guest in guests:
+                try:
+                    dom = c.lookupByName( guest )
+                    domList.append( dom )
+                except libvirt.libvirtError:
+                    pass # logit was registered to libvirt error handler
+        else:
+            exit("\nYou must have at lease 1 dom name.\n\nRun 'virtback -h' for help.\n")
+
+    elif options.backupall or options.rebootall or options.shutdownall or options.createall:
         for id in c.listDomainsID(): # loop over the running ids
             domList.append( c.lookupByID( id ) )
         
-    print domList
-    #if options.backup or options.backupall: backup( domList )
-    #if options.reboot or options.rebootall: reboot( domList )
-    #if options.shutdown or options.shutdownall: shutdown( domList )
-    #if options.start options.startall: start( domList )
+    if options.backup or options.backupall: backup( domList )
+    if options.reboot or options.rebootall: reboot( domList )
+    if options.shutdown or options.shutdownall: shutdown( domList )
+    if options.create or options.createall: create( domList )
