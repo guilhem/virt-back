@@ -31,7 +31,8 @@ def invoke( domList, method, active=True ):
         if dom.isActive() == active:
             try:
                 logit( method, 'invoking ' + method + ' on ' + dom.name() )
-                f(dom)
+                retcode = f(dom)
+                if retcode: logit( method, method + ' returned ' + str(retcode) + ' on ' + dom.name() ) # log retcode
             except libvirt.libvirtError:
                 pass
 
@@ -75,6 +76,10 @@ def reboot( domList ):
     """Accept a list of dom objects, attempt to shutdown then start"""
     shutdown( domList )
     create( domList )
+    
+def info( domList ):
+    """Accept a list of dom objects, attempt to display info"""
+    invoke( domList, 'info' )
 
 
 def logit( context, message ):
@@ -101,8 +106,18 @@ def getoptions():
     p.add_option( '-p', '--path', dest='backpath', metavar='\'PATH\'', default='/KVMBACK/',
                   help='backup path & trailing slash [default: \'/KVMBACK/\']' )
 
-    # WARNING: Dangerous options below, option grouping for scary actions
+     # Actions for info testing: These options display info/ test a list of guests only.
+                  
+    g0 = OptionGroup( p, "Actions for info testing", "These options display info or test a list of guests."  )
+                  
+    g0.add_option( '-i', '--info', dest='info', action='store_true', default=False,
+                  help='info/test a list of guests (space delimited dom names)' )
+                  
+    g0.add_option( '--info-all', dest='infoall', action='store_true', default=False,
+                  help='attempt to show info on ALL guests' )
 
+    # WARNING: Dangerous options below, option grouping for scary actions
+                  
     g1 = OptionGroup( p, "Actions for a list of dom names", "WARNING:  These options WILL bring down guests!"  )
     
     g1.add_option( '-b', '--backup', dest='backup', action='store_true', default=False,
@@ -132,6 +147,7 @@ def getoptions():
                   help='attempt to start ALL guests' )
 
     # attach groups g1 and g2 to the parser p object
+    p.add_option_group( g0 )
     p.add_option_group( g1 )
     p.add_option_group( g2 )
 
@@ -140,8 +156,8 @@ def getoptions():
 
     # the actionsum should be 1 to continue, bool math ftw
     actionsum = sum( [  options.backup, options.reboot, options.shutdown,
-                        options.create, options.backupall, options.rebootall, 
-                        options.shutdownall, options.createall ] )
+                        options.create, options.info, options.backupall, options.rebootall, 
+                        options.shutdownall, options.createall, options.infoall,] )
 
     if actionsum == 1:
         return options, guests
@@ -159,7 +175,7 @@ if __name__ == '__main__':
     c = connect() # connect to libvirt
     domList = [] # this will store the dom objects
     
-    if options.backup or options.reboot or options.shutdown or options.create: # if one of these actions true
+    if options.backup or options.reboot or options.shutdown or options.create or options.info: # if one of these actions true
         if guests: # make sure guests list is not empty
             for guest in guests:
                 try:
@@ -170,7 +186,7 @@ if __name__ == '__main__':
         else:
             exit("\nYou must have at lease 1 dom name.\n\nRun 'virtback -h' for help.\n")
 
-    elif options.backupall or options.rebootall or options.shutdownall or options.createall:
+    elif options.backupall or options.rebootall or options.shutdownall or options.createall or options.infoall:
         for id in c.listDomainsID(): # loop over the running ids
             domList.append( c.lookupByID( id ) )
         
@@ -178,3 +194,5 @@ if __name__ == '__main__':
     if options.reboot or options.rebootall: reboot( domList )
     if options.shutdown or options.shutdownall: shutdown( domList )
     if options.create or options.createall: create( domList )
+    if options.info or options.infoall: info( domList )
+    
