@@ -51,8 +51,10 @@ def backup( domList ):
             f.write( xml )
             f.close()
             disklist = findall( "<source file='(.*)'/>\n", xml )
-            #filename = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
-            filename = options.backpath + dom.name() + '.tar.gz'
+
+            if options.tardate: filename = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
+            else: filename = options.backpath + dom.name() + '.tar.gz'
+
             tar = tarfile.open( filename, 'w:gz' )
             logit( 'backup', 'starting backup for ' + dom.name() + ' to ' + filename )
             tar.add( xmlfile ) # add xml to tar
@@ -105,8 +107,11 @@ def getoptions():
 
     p.add_option( '-p', '--path', dest='backpath', metavar='\'PATH\'', default='/KVMBACK/',
                   help='backup path & trailing slash [default: \'/KVMBACK/\']' )
+    
+    p.add_option( '-d', '--date', dest='tardate', default=False, action='store_true',
+                  help='append date to tar filename [default: no date]' )
 
-     # Actions for info testing: These options display info/ test a list of guests only.
+    # Actions for info testing: These options display info/ test a list of guests only.
                   
     g0 = OptionGroup( p, "Actions for info testing", "These options display info or test a list of guests."  )
                   
