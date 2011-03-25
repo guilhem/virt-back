@@ -15,6 +15,9 @@ from datetime import date
 from sys import exit
 from optparse import OptionParser, OptionGroup
 from operator import methodcaller
+from os.path import isfile
+from os import remove
+from shutil import move
 
 def connect():
     """ connect to qemu with read write access"""
@@ -41,8 +44,10 @@ def backup( domList ):
     tarList = [] # this will be filled with tar filenames
 
     for dom in domList:
-        shutdown([dom])
-        if dom.isActive(): # if dom is active
+        if dom.isActive(): # if dom is active, shutdown
+            shutdown([dom])
+            
+        if dom.isActive(): # if dom is active, error
             logit( 'error', 'we could not shutdown or destroy ' + dom.name() + 'and the BACKUP FAILED!' )
         else: # backup
             xml = dom.XMLDesc( 0 )
@@ -54,11 +59,20 @@ def backup( domList ):
 
             if options.tardate: filename = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
             else: filename = options.backpath + dom.name() + '.tar.gz'
+            
+            if isfile( filename ): # if the file exists, rotate up to 3 version
+                try: remove( filename + '.2' )
+                except OSError: pass
+                
+                try: move( filename + '.1', filename + '.2' )
+                except IOError: pass
+                
+                move( filename, filename + '.1' )
 
             tar = tarfile.open( filename, 'w:gz' )
-            logit( 'backup', 'starting backup for ' + dom.name() + ' to ' + filename )
+            logit( 'backup', 'invoking backup for ' + dom.name() + ' to ' + filename )
             tar.add( xmlfile ) # add xml to tar
-            tar.add( disklist[0] ) # we could loop and tar each disk file
+            tar.add( disklist[0] ) # we could loop and tar each disk in disklist
             tar.close()
             logit( 'backup', 'finished backup for' + dom.name() )
             create([dom]) # start dom
@@ -102,6 +116,14 @@ def getoptions():
     # create an option parcer object
     p = OptionParser()
 
+    p.set_description(
+    """A backup utility for QEMU or KVM guests. 
+Virtback is a python application that uses the libvirt api to safely shutdown, gunzip, and restart guests.
+The backup process logs to syslog for auditing and virtback works great with cron for scheduling outages.
+Virtback has been placed in the public domain and the latest version may be downloaded here:
+https://bitbucket.org/russellballestrini/virtback
+    """)
+    
     p.add_option( '-v', '--verbose', dest='verbose', action='store_true', default=False,
                   help='verbose output to stdout [default: no output]' )
 
@@ -200,4 +222,3 @@ if __name__ == '__main__':
     if options.shutdown or options.shutdownall: shutdown( domList )
     if options.create or options.createall: create( domList )
     if options.info or options.infoall: info( domList )
-    
