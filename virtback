@@ -27,15 +27,15 @@ def connect():
     assert c, 'Failed to open connection ' + url
     return c
 
-def invoke( domList, method, active=True ):
+def invoke( domList, method, active=None ):
     """pattern to invoke shutdown, destroy, and start on a list of doms"""
     f = methodcaller( method )
     for dom in domList:
-        if dom.isActive() == active:
+        if dom.isActive() == active or active == None: # when active is None, do to all doms
             try:
-                logit( method, 'invoking ' + method + ' on ' + dom.name() )
+                logit( method, 'invoking \'' + method + '\' on ' + dom.name() )
                 retcode = f(dom)
-                if retcode: logit( method, method + ' returned ' + str(retcode) + ' on ' + dom.name() ) # log retcode
+                if retcode: logit( method, method + ' returned \'' + str(retcode) + '\' on ' + dom.name() ) # log retcode
             except libvirt.libvirtError:
                 pass
 
@@ -44,11 +44,14 @@ def backup( domList ):
     tarList = [] # this will be filled with tar filenames
 
     for dom in domList:
+    
+        recreate = dom.isActive()
+    
         if dom.isActive(): # if dom is active, shutdown
             shutdown([dom])
             
         if dom.isActive(): # if dom is active, error
-            logit( 'error', 'we could not shutdown or destroy ' + dom.name() + 'and the BACKUP FAILED!' )
+            logit( 'error', 'we could not shutdown or destroy ' + dom.name() + ' and the BACKUP FAILED!' )
         else: # backup
             xml = dom.XMLDesc( 0 )
             xmlfile = '/tmp/' + dom.name() + '.xml'
@@ -61,6 +64,7 @@ def backup( domList ):
             else: filename = options.backpath + dom.name() + '.tar.gz'
             
             if isfile( filename ): # if the file exists, rotate up to 3 version
+                logit( 'backup', 'rotating backup files for ' + dom.name() )
                 try: remove( filename + '.2' )
                 except OSError: pass
                 
@@ -74,19 +78,21 @@ def backup( domList ):
             tar.add( xmlfile ) # add xml to tar
             tar.add( disklist[0] ) # we could loop and tar each disk in disklist
             tar.close()
-            logit( 'backup', 'finished backup for' + dom.name() )
-            create([dom]) # start dom
+            logit( 'backup', 'finished backup for ' + dom.name() )
+            
+            if recreate: # determine if guest should be started up after backup ()
+                create([dom]) # start dom
 
 def shutdown( domList, wait=20 ):
-    """Accept a list of dom objects, attempt to shutdown"""
-    invoke( domList, 'shutdown' ) # if active, attempt shutdown   
+    """Accept a list of dom objects, attempt to shutdown the active ones"""
+    invoke( domList, 'shutdown', active=True ) # if active, attempt shutdown   
     sleep( wait )
-    invoke( domList, 'destroy' ) # if active, attempt destroy
+    invoke( domList, 'destroy', active=True ) # if active, attempt destroy
     sleep( wait/2 )
 
 def create( domList ):
-    """Accept a list of dom objects, attempt to start"""
-    invoke( domList, 'create', active=False ) # if active, attempt shutdown   
+    """Accept a list of dom objects, attempt to start the inactive ones"""
+    invoke( domList, 'create', active=False ) # if not active, attempt create   
 
 def reboot( domList ):
     """Accept a list of dom objects, attempt to shutdown then start"""
@@ -94,8 +100,9 @@ def reboot( domList ):
     create( domList )
     
 def info( domList ):
-    """Accept a list of dom objects, attempt to display info"""
-    invoke( domList, 'info' )
+    """Accept a list of dom objects, attempt to display info for all"""
+    invoke( domList, 'name' )
+    invoke( domList, 'info')
 
 
 def logit( context, message ):
@@ -196,7 +203,7 @@ if __name__ == '__main__':
 
     TODAY = str( date.today() )
     
-    # Get the list of dom objects based on cli options
+    # Get the list of options and list of guest names from cli
     options, guests = getoptions()
     
     c = connect() # connect to libvirt
@@ -204,18 +211,25 @@ if __name__ == '__main__':
     
     if options.backup or options.reboot or options.shutdown or options.create or options.info: # if one of these actions true
         if guests: # make sure guests list is not empty
-            for guest in guests:
+            for name in guests:
                 try:
-                    dom = c.lookupByName( guest )
+                    dom = c.lookupByName( name )
                     domList.append( dom )
                 except libvirt.libvirtError:
                     pass # logit was registered to libvirt error handler
         else:
             exit("\nYou must have at lease 1 dom name.\n\nRun 'virtback -h' for help.\n")
 
-    elif options.backupall or options.rebootall or options.shutdownall or options.createall or options.infoall:
-        for id in c.listDomainsID(): # loop over the running ids
-            domList.append( c.lookupByID( id ) )
+    else:  
+        if options.rebootall or options.shutdownall or options.backupall or options.infoall:
+            # running guests
+            for id in c.listDomainsID(): # loop over the running ids
+                domList.append( c.lookupByID( id ) )
+                
+        if options.createall or options.backupall or options.infoall:
+            # defined shut off guests
+            for name in c.listDefinedDomains(): # loop over the shut off but defined domains
+                domList.append( c.lookupByName( name ) )
         
     if options.backup or options.backupall: backup( domList )
     if options.reboot or options.rebootall: reboot( domList )
