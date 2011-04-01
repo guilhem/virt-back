@@ -41,9 +41,9 @@ def invoke( domList, method, active=None ):
     for dom in domList:
         if dom.isActive() == active or active == None: # when active is None, do to all doms
             try:
-                logit( method, 'invoking \'' + method + '\' on ' + dom.name() )
+                logit( method, 'invoking ' + method + ' on ' + dom.name() )
                 retcode = f(dom)
-                if retcode: logit( method, method + ' returned \'' + str(retcode) + '\' on ' + dom.name() ) # log retcode
+                if retcode: logit( method, method + ' returned ' + str(retcode) + ' on ' + dom.name() ) # log retcode
             except libvirt.libvirtError:
                 pass
 
@@ -91,7 +91,7 @@ def backup( domList ):
             if recreate: # determine if guest should be started up after backup ()
                 create([dom]) # start dom
 
-def shutdown( domList, wait=20 ):
+def shutdown( domList, wait=45 ):
     """Accept a list of dom objects, attempt to shutdown the active ones"""
     invoke( domList, 'shutdown', active=True ) # if active, attempt shutdown   
     sleep( wait )
