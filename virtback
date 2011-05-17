@@ -84,6 +84,7 @@ def backup( domList ):
             tar = tarfile.open( filename, 'w:gz' )
             logit( 'backup', 'invoking backup for ' + dom.name() + ' to ' + filename )
             tar.add( xmlfile ) # add xml to tar
+            remove( xmlfile ) # remove the /tmp/xml file
             tar.add( disklist[0] ) # we could loop and tar each disk in disklist
             tar.close()
             logit( 'backup', 'finished backup for ' + dom.name() )
