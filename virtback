@@ -16,7 +16,7 @@ from sys import exit
 from optparse import OptionParser, OptionGroup
 from os.path import isfile
 from os import remove
-from shutil import move
+from shutil import move, copy2
 
 try:
     from operator import methodcaller
@@ -60,38 +60,45 @@ def backup( domList ):
             
         if dom.isActive(): # if dom is active, error
             logit( 'error', 'we could not shutdown or destroy ' + dom.name() + ' and the BACKUP FAILED!' )
+
         else: # backup
             xml = dom.XMLDesc( 0 )
-            xmlfile = '/tmp/' + dom.name() + '.xml'
+            xmlfile = options.backpath + dom.name() + '.xml'
             f = open( xmlfile, 'w')
             f.write( xml )
             f.close()
             disklist = findall( "<source file='(.*)'/>\n", xml )
 
-            if options.tardate: filename = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
-            else: filename = options.backpath + dom.name() + '.tar.gz'
-            
-            if isfile( filename ): # if the file exists, rotate up to 3 version
-                logit( 'backup', 'rotating backup files for ' + dom.name() )
-                try: remove( filename + '.2' )
-                except OSError: pass
-                
-                try: move( filename + '.1', filename + '.2' )
-                except IOError: pass
-                
-                move( filename, filename + '.1' )
-
-            tar = tarfile.open( filename, 'w:gz' )
             logit( 'backup', 'invoking backup for ' + dom.name() + ' to ' + filename )
-            tar.add( xmlfile ) # add xml to tar
-            remove( xmlfile ) # remove the /tmp/xml file
-            tar.add( disklist[0] ) # we could loop and tar each disk in disklist
-            tar.close()
-            logit( 'backup', 'finished backup for ' + dom.name() )
             
-            if recreate: # determine if guest should be started up after backup ()
+            origfile = disklist[0]
+            copyfile = options.backpath + origfile.split('/')[-1] # path to disk copy 
+            copy2( origfile, copyfile )
+            
+            if recreate: # determine if guest should be started up after backup
                 create([dom]) # start dom
 
+            if options.tardate: tarpath = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
+            else: tarpath = options.backpath + dom.name() + '.tar.gz'
+            
+            if isfile( tarpath ): # if the file exists, rotate up to 3 version
+                logit( 'backup', 'rotating backup files for ' + dom.name() )
+                try: remove( tarpath + '.2' )
+                except OSError: pass
+                
+                try: move( tarpath + '.1', tarpath + '.2' )
+                except IOError: pass
+                
+                move( tarpath, tarpath + '.1' )
+
+            tar = tarfile.open( tarpath, 'w:gz' )
+            tar.add( xmlfile ) # add xml to tar
+            tar.add( copyfile ) # add img to tar 
+            tar.close()
+            remove( xmlfile ) # cleanup tmp files
+            remove( copyfile ) # cleanup tmp files
+            logit( 'backup', 'finished backup for ' + dom.name() )
+            
 def shutdown( domList, wait=45 ):
     """Accept a list of dom objects, attempt to shutdown the active ones"""
     invoke( domList, 'shutdown', active=True ) # if active, attempt shutdown   
