@@ -69,7 +69,7 @@ def backup( domList ):
             f.close()
             disklist = findall( "<source file='(.*)'/>\n", xml )
 
-            logit( 'backup', 'invoking backup for ' + dom.name() + ' to ' + filename )
+            logit( 'backup', 'invoking backup for ' + dom.name() )
             
             origfile = disklist[0]
             copyfile = options.backpath + origfile.split('/')[-1] # path to disk copy 
@@ -91,6 +91,7 @@ def backup( domList ):
                 
                 move( tarpath, tarpath + '.1' )
 
+            logit( 'backup', 'gzipping files for ' + dom.name() + ' to ' + tarpath )
             tar = tarfile.open( tarpath, 'w:gz' )
             tar.add( xmlfile ) # add xml to tar
             tar.add( copyfile ) # add img to tar 
