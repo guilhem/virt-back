@@ -36,17 +36,16 @@ def connect():
     assert c, 'Failed to open connection ' + url
     return c
 
-def invoke( domList, method, active=None ):
+def invoke( domList, method ):
     """pattern to invoke shutdown, destroy, and start on a list of doms"""
     f = methodcaller( method )
     for dom in domList:
-        if dom.isActive() == active or active == None: # when active is None, do to all doms
-            try:
-                logit( method, 'invoking ' + method + ' on ' + dom.name() )
-                retcode = f(dom)
-                if retcode: logit( method, method + ' returned ' + str(retcode) + ' on ' + dom.name() ) # log retcode
-            except libvirt.libvirtError:
-                pass
+        try:
+            logit( method, 'invoking ' + method + ' on ' + dom.name() )
+            retcode = f(dom)
+            if retcode: logit( method, method + ' returned ' + str(retcode) + ' on ' + dom.name() ) # log retcode
+        except libvirt.libvirtError:
+            pass
 
 def backup( domList ):
     """ Accept a domList, run backup proceedure on each """
@@ -103,7 +102,8 @@ def backup( domList ):
             
 def shutdown( domList, wait=180 ):
     """Accept a list of dom objects, attempt to shutdown the active ones"""
-    invoke( domList, 'shutdown', active=True ) # if active, attempt shutdown   
+    # get all running guests from list and invoke shutdown   
+    invoke( get_all_running( domList ), 'shutdown' )
 
     """
     loop until all guests are shut off or 
@@ -133,7 +133,8 @@ def shutdown( domList, wait=180 ):
 
 def create( domList ):
     """Accept a list of dom objects, attempt to start the inactive ones"""
-    invoke( domList, 'create', active=False ) # if not active, attempt create   
+    # get all shutoff guests from list and invoke create   
+    invoke( get_all_shutoff( domList ), 'create' )
 
 def reboot( domList ):
     """Accept a list of dom objects, attempt to shutdown then start"""
@@ -146,6 +147,8 @@ def info( domList ):
     invoke( domList, 'info')
     #if all_running( domList ): print "All guests are running"
     #if all_shutoff( domList ): print "All guests are shut off"
+    print "running guests: " + ', '.join( [ dom.name() for dom in get_all_running( domList ) ] )
+    print "shutoff guests: " + ', '.join( [ dom.name() for dom in get_all_shutoff( domList ) ] )
 
 def check_all_running( domList ):
     """Accept a list of dom objects, check if all guest dom are active"""
