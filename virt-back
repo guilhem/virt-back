@@ -101,12 +101,35 @@ def backup( domList ):
             remove( copyfile ) # cleanup tmp files
             logit( 'backup', 'finished backup for ' + dom.name() )
             
-def shutdown( domList, wait=45 ):
+def shutdown( domList, wait=180 ):
     """Accept a list of dom objects, attempt to shutdown the active ones"""
     invoke( domList, 'shutdown', active=True ) # if active, attempt shutdown   
-    sleep( wait )
-    invoke( domList, 'destroy', active=True ) # if active, attempt destroy
-    sleep( wait/2 )
+
+    """
+    loop until all guests are shut off or 
+    destroy all active guests if wait timer is reached. 
+    """
+    secs = 10
+    wait /= secs # divide wait by secs 
+
+    for i in range( 0, wait + 1 ):
+
+        # if all doms are shut off, leave loop
+        if check_all_shutoff( domList ): 
+            break
+        else:
+            logit(
+              'shutdown', 
+              'waited ' + str( i * secs ) + ' seconds for ' + 
+              ', '.join( dom.name() for dom in get_all_running( domList ) ) +
+              ' to shut off'
+            )
+
+        # if the wait time is reached, destroy all active doms
+        if i == wait: 
+            invoke( get_all_running( domList ) ,'destroy' )
+        
+        sleep( secs )
 
 def create( domList ):
     """Accept a list of dom objects, attempt to start the inactive ones"""
@@ -121,6 +144,28 @@ def info( domList ):
     """Accept a list of dom objects, attempt to display info for all"""
     invoke( domList, 'name' )
     invoke( domList, 'info')
+    #if all_running( domList ): print "All guests are running"
+    #if all_shutoff( domList ): print "All guests are shut off"
+
+def check_all_running( domList ):
+    """Accept a list of dom objects, check if all guest dom are active"""
+    if sum( [dom.isActive() for dom in domList] ) == len( domList ):
+        return True
+    return False
+
+def check_all_shutoff( domList ):
+    """Accept a list of dom objects, check if all guest dom are shut off"""
+    if sum( [dom.isActive() for dom in domList] ):
+        return False
+    return True
+
+def get_all_running( domList ):
+    """Accept a list of dom objects, return a list of running dom objects"""
+    return [ dom for dom in domList if dom.isActive() ]
+
+def get_all_shutoff( domList ):
+    """Accept a list of dom objects, return a list of shutoff dom objects"""
+    return [ dom for dom in domList if not dom.isActive() ]
 
 
 def logit( context, message ):
