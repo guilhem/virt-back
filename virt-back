@@ -28,12 +28,11 @@ except ImportError:
         return caller
 
 
-def connect():
-    """ connect to qemu with read write access"""
-    url = 'qemu:///system' # cli option? reboot all on remote server?
-    c = libvirt.open( url )
+def connect( uri = 'qemu:///system' ):
+    """ connect to hypervisor uri with read write access"""
+    c = libvirt.open( uri )
     libvirt.registerErrorHandler( logit, 'libvirt error - ') # register logit as the error handler
-    assert c, 'Failed to open connection ' + url
+    assert c, 'Failed to open connection ' + uri
     return c
 
 def invoke( domList, method ):
@@ -105,10 +104,9 @@ def shutdown( domList, wait=180 ):
     # get all running guests from list and invoke shutdown   
     invoke( get_all_running( domList ), 'shutdown' )
 
-    """
-    loop until all guests are shut off or 
-    destroy all active guests if wait timer is reached. 
-    """
+    """loop until all guests are shut off or destroy 
+       all active guests if wait timer is reached."""
+
     secs = 10
     wait /= secs # divide wait by secs 
 
@@ -145,10 +143,19 @@ def info( domList ):
     """Accept a list of dom objects, attempt to display info for all"""
     invoke( domList, 'name' )
     invoke( domList, 'info')
-    #if all_running( domList ): print "All guests are running"
-    #if all_shutoff( domList ): print "All guests are shut off"
-    print "running guests: " + ', '.join( [ dom.name() for dom in get_all_running( domList ) ] )
-    print "shutoff guests: " + ', '.join( [ dom.name() for dom in get_all_shutoff( domList ) ] )
+    if check_all_running( domList ): print "All guests are running"
+    if check_all_shutoff( domList ): print "All guests are shut off"
+    print ''
+    print 'running guests: ' + ', '.join( [ dom.name() for dom in get_all_running( domList ) ] )
+    print 'shutoff guests: ' + ', '.join( [ dom.name() for dom in get_all_shutoff( domList ) ] )
+    print ''
+    for dom in domList:
+        print dom.name()
+        print 'Consumed Memory:', dom.info()[2]/1024, 'MB'
+        print 'Allocated Memory:', dom.info()[1]/1024, 'MB'
+        print 'Allocated vCPUs:', dom.info()[3]
+        print 'CPU time:', dom.info()[4], 'nanoseconds'
+        print ''
 
 def check_all_running( domList ):
     """Accept a list of dom objects, check if all guest dom are active"""
@@ -200,12 +207,15 @@ https://bitbucket.org/russellballestrini/virt-back
     p.add_option( '-v', '--verbose', dest='verbose', action='store_true', default=False,
                   help='verbose output to stdout [default: no output]' )
 
-    p.add_option( '-p', '--path', dest='backpath', metavar='\'PATH\'', default='/KVMBACK/',
-                  help='backup path & trailing slash [default: \'/KVMBACK/\']' )
-    
     p.add_option( '-d', '--date', dest='tardate', default=False, action='store_true',
                   help='append date to tar filename [default: no date]' )
 
+    p.add_option( '-p', '--path', dest='backpath', metavar="'PATH'", default='/KVMBACK/',
+                  help="backup path & trailing slash [default: '/KVMBACK/']" )
+
+    p.add_option( '-u', '--uri', dest='uri', metavar="'URI'", default='qemu:///system',
+                  help="hypervisor uri [default: 'qemu:///system']" )
+    
     # Actions for info testing: These options display info/ test a list of guests only.
                   
     g0 = OptionGroup( p, "Actions for info testing", "These options display info or test a list of guests."  )
@@ -272,7 +282,7 @@ if __name__ == '__main__':
     # Get the list of options and list of guest names from cli
     options, guests = getoptions()
     
-    c = connect() # connect to libvirt
+    c = connect( options.uri ) # connect to hypervisor with libvirt
     domList = [] # this will store the dom objects
     
     if options.backup or options.reboot or options.shutdown or options.create or options.info: # if one of these actions true
