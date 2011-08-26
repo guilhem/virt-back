@@ -27,13 +27,17 @@ except ImportError:
             return getattr(obj, name)(*args, **kwargs)
         return caller
 
-
-def connect( uri = 'qemu:///system' ):
+def connect( uri = None ):
     """ connect to hypervisor uri with read write access"""
-    c = libvirt.open( uri )
     libvirt.registerErrorHandler( logit, 'libvirt error - ') # register logit as the error handler
-    assert c, 'Failed to open connection ' + uri
-    return c
+    
+    try:
+        c = libvirt.open( uri )
+    except:
+        c = None
+
+    if c: return c
+    else: exit( "Failed to open connection to the hypervisor" )
 
 def invoke( domList, method ):
     """pattern to invoke shutdown, destroy, and start on a list of doms"""
@@ -213,8 +217,8 @@ https://bitbucket.org/russellballestrini/virt-back
     p.add_option( '-p', '--path', dest='backpath', metavar="'PATH'", default='/KVMBACK/',
                   help="backup path & trailing slash [default: '/KVMBACK/']" )
 
-    p.add_option( '-u', '--uri', dest='uri', metavar="'URI'", default='qemu:///system',
-                  help="hypervisor uri [default: 'qemu:///system']" )
+    p.add_option( '-u', '--uri', dest='uri', metavar="'URI'",
+                  help="optional hypervisor uri" )
     
     # Actions for info testing: These options display info/ test a list of guests only.
                   
