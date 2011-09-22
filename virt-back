@@ -304,8 +304,10 @@ if __name__ == '__main__':
         if options.rebootall or options.shutdownall or options.backupall or options.infoall:
             # running guests
             for id in c.listDomainsID(): # loop over the running ids
-                domList.append( c.lookupByID( id ) )
-                
+                dom = c.lookupByID( id ) # fetch dom object by id
+                if 'Domain-' not in dom.name(): # prevent actions on the Xen hypervisor
+                    domList.append( dom ) # append dom object to domList
+ 
         if options.createall or options.backupall or options.infoall:
             # defined shut off guests
             for name in c.listDefinedDomains(): # loop over the shut off but defined domains
