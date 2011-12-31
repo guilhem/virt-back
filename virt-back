@@ -94,14 +94,15 @@ def backup( domList ):
                 
                 move( tarpath, tarpath + '.1' )
 
-            logit( 'backup', 'gzipping files for ' + dom.name() + ' to ' + tarpath )
-            tar = tarfile.open( tarpath, 'w:gz' )
-            tar.add( xmlfile ) # add xml to tar
-            tar.add( copyfile ) # add img to tar 
-            tar.close()
-            remove( xmlfile ) # cleanup tmp files
-            remove( copyfile ) # cleanup tmp files
-            logit( 'backup', 'finished backup for ' + dom.name() )
+            if not options.nogzip: # tar routine
+                logit( 'backup', 'gzipping files for ' + dom.name() + ' to ' + tarpath )
+                tar = tarfile.open( tarpath, 'w:gz' )
+                tar.add( xmlfile ) # add xml to tar
+                tar.add( copyfile ) # add img to tar 
+                tar.close()
+                remove( xmlfile ) # cleanup tmp files
+                remove( copyfile ) # cleanup tmp files
+                logit( 'backup', 'finished backup for ' + dom.name() )
             
 def shutdown( domList, wait=180 ):
     """Accept a list of dom objects, attempt to shutdown the active ones"""
@@ -211,15 +212,18 @@ https://bitbucket.org/russellballestrini/virt-back
     p.add_option( '-v', '--verbose', dest='verbose', action='store_true', default=False,
                   help='verbose output to stdout [default: no output]' )
 
-    p.add_option( '-d', '--date', dest='tardate', default=False, action='store_true',
+    p.add_option( '-d', '--date', dest='tardate', action='store_true', default=False,
                   help='append date to tar filename [default: no date]' )
+
+    p.add_option( '-g', '--no-gzip', dest='nogzip', action='store_true', default=False,
+                  help='do not gzip or tar the resulting files' )
 
     p.add_option( '-p', '--path', dest='backpath', metavar="'PATH'", default='/KVMBACK/',
                   help="backup path & trailing slash [default: '/KVMBACK/']" )
-
+    
     p.add_option( '-u', '--uri', dest='uri', metavar="'URI'",
                   help="optional hypervisor uri" )
-    
+
     # Actions for info testing: These options display info/ test a list of guests only.
                   
     g0 = OptionGroup( p, "Actions for info testing", "These options display info or test a list of guests."  )
