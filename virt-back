@@ -74,9 +74,12 @@ def backup( domList ):
 
             logit( 'backup', 'invoking backup for ' + dom.name() )
             
-            origfile = disklist[0]
-            copyfile = options.backpath + origfile.split('/')[-1] # path to disk copy 
-            copy2( origfile, copyfile )
+	    for disk_source in disklist:
+                disk_dest = options.backpath + disk_source.split('/')[-1]
+                logit( 'backup', 
+		  'copying ' + disk_source + ' to '+ disk_dest + ' for ' + dom.name()
+		)
+                copy2( disk_source, disk_dest )
             
             if recreate: # determine if guest should be started up after backup
                 create([dom]) # start dom
@@ -94,15 +97,27 @@ def backup( domList ):
                 
                 move( tarpath, tarpath + '.1' )
 
-            if not options.nogzip: # tar routine
-                logit( 'backup', 'gzipping files for ' + dom.name() + ' to ' + tarpath )
-                tar = tarfile.open( tarpath, 'w:gz' )
-                tar.add( xmlfile ) # add xml to tar
-                tar.add( copyfile ) # add img to tar 
-                tar.close()
-                remove( xmlfile ) # cleanup tmp files
-                remove( copyfile ) # cleanup tmp files
+            if options.nogzip: # skip the rest
                 logit( 'backup', 'finished backup for ' + dom.name() )
+                continue
+
+            logit( 'backup', 'gzipping files for ' + dom.name() + ' to ' + tarpath )
+            tar = tarfile.open( tarpath, 'w:gz' )
+
+            logit( 'backup', 'gzipping ' + xmlfile + ' for ' + dom.name() )
+            tar.add( xmlfile ) # add xml to tar
+            remove( xmlfile ) # cleanup tmp files
+
+            for disk_source in disklist:
+                disk_dest = options.backpath + disk_source.split('/')[-1]
+
+                logit( 'backup', 'gzipping ' + disk_dest + ' for ' + dom.name() )
+                tar.add( disk_dest ) # add img to tar 
+                remove( disk_dest ) # cleanup tmp files
+            
+	    tar.close()
+
+            logit( 'backup', 'finished backup for ' + dom.name() )
             
 def shutdown( domList, wait=180 ):
     """Accept a list of dom objects, attempt to shutdown the active ones"""
@@ -188,7 +203,9 @@ def logit( context, message ):
     if type( message ) is tuple:
         message = message[2] # libvirt message is a tuple
 
-    if options.verbose:
+    if options.quiet:
+        pass 
+    else:
         print context + ': ' +  message
 
     syslog.openlog( 'virt-back', 0, syslog.LOG_LOCAL3 )
@@ -209,8 +226,8 @@ Virt-back has been placed in the public domain and the latest version may be dow
 https://bitbucket.org/russellballestrini/virt-back
     """)
     
-    p.add_option( '-v', '--verbose', dest='verbose', action='store_true', default=False,
-                  help='verbose output to stdout [default: no output]' )
+    p.add_option( '-q', '--quiet', dest='quiet', action='store_true', default=False,
+                  help='prevent output to stdout' )
 
     p.add_option( '-d', '--date', dest='tardate', action='store_true', default=False,
                   help='append date to tar filename [default: no date]' )
