@@ -1,11 +1,20 @@
 #! /usr/bin/python
 
 ############################################
-# Program:	 Virt-back
+# Program:   virt-back.py
 # Author:    Russell.Ballestrini.net
 # Date:      Fri Mar 18 15:56:59 EDT 2011
 # License:   Public Domain
 ############################################
+
+DESCRIPTION = """A backup utility for QEMU, KVM, XEN, and Virtualbox guests.
+Virt-back is a python application that uses the libvirt api to safely 
+shutdown, gzip, and restart guests.  The backup process logs to syslog
+for auditing and virt-back works great with cron for scheduling outages.
+Virt-back has been placed in the public domain and 
+the latest version may be downloaded here:
+https://bitbucket.org/russellballestrini/virt-back
+"""
 
 import libvirt
 import tarfile
@@ -29,7 +38,7 @@ except ImportError:
 
 def connect( uri = None ):
     """ connect to hypervisor uri with read write access"""
-    libvirt.registerErrorHandler( logit, 'libvirt error - ') # register logit as the error handler
+    libvirt.registerErrorHandler( logit, 'libvirt error') # register logit as the error handler
     
     try:
         c = libvirt.open( uri )
@@ -44,15 +53,14 @@ def invoke( domList, method ):
     f = methodcaller( method )
     for dom in domList:
         try:
-            logit( method, 'invoking ' + method + ' on ' + dom.name() )
+            logit( method, 'invoking %s on %s' % (method, dom.name()) )
             retcode = f(dom)
-            if retcode: logit( method, method + ' returned ' + str(retcode) + ' on ' + dom.name() ) # log retcode
+            if retcode: logit( method, '%s returned %s on %s' % (method, retcode, dom.name()) ) # log retcode
         except libvirt.libvirtError:
             pass
 
 def backup( domList ):
     """ Accept a domList, run backup proceedure on each """
-    tarList = [] # this will be filled with tar filenames
 
     for dom in domList:
     
@@ -62,7 +70,7 @@ def backup( domList ):
             shutdown([dom])
             
         if dom.isActive(): # if dom is active, error
-            logit( 'error', 'we could not shutdown or destroy ' + dom.name() + ' and the BACKUP FAILED!' )
+            logit( 'error', 'we could not shutdown or destroy %s and the BACKUP FAILED!' % dom.name() )
 
         else: # backup
             xml = dom.XMLDesc( 0 )
@@ -77,12 +85,16 @@ def backup( domList ):
 	    for disk_source in disklist:
                 disk_dest = options.backpath + disk_source.split('/')[-1]
                 logit( 'backup', 
-		  'copying ' + disk_source + ' to '+ disk_dest + ' for ' + dom.name()
+		  'copying %s to %s for %s' % (disk_source, disk_dest, dom.name())
 		)
                 copy2( disk_source, disk_dest )
             
             if recreate: # determine if guest should be started up after backup
                 create([dom]) # start dom
+
+            if options.nogzip: # skip gzip logic 
+                logit( 'backup', 'finished backup for ' + dom.name() )
+                continue
 
             if options.tardate: tarpath = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
             else: tarpath = options.backpath + dom.name() + '.tar.gz'
@@ -97,21 +109,17 @@ def backup( domList ):
                 
                 move( tarpath, tarpath + '.1' )
 
-            if options.nogzip: # skip the rest
-                logit( 'backup', 'finished backup for ' + dom.name() )
-                continue
-
-            logit( 'backup', 'gzipping files for ' + dom.name() + ' to ' + tarpath )
+            logit( 'backup', 'gzipping files for %s to %s' % (dom.name(), tarpath) )
             tar = tarfile.open( tarpath, 'w:gz' )
 
-            logit( 'backup', 'gzipping ' + xmlfile + ' for ' + dom.name() )
+            logit( 'backup', 'gzipping %s for %s' % (xmlfile, dom.name()) )
             tar.add( xmlfile ) # add xml to tar
             remove( xmlfile ) # cleanup tmp files
 
             for disk_source in disklist:
                 disk_dest = options.backpath + disk_source.split('/')[-1]
 
-                logit( 'backup', 'gzipping ' + disk_dest + ' for ' + dom.name() )
+                logit( 'backup', 'gzipping %s for %s' % (disk_dest, dom.name()) )
                 tar.add( disk_dest ) # add img to tar 
                 remove( disk_dest ) # cleanup tmp files
             
@@ -218,13 +226,7 @@ def getoptions():
     # create an option parcer object
     p = OptionParser()
 
-    p.set_description(
-    """A backup utility for QEMU or KVM guests. 
-Virt-back is a python application that uses the libvirt api to safely shutdown, gunzip, and restart guests.
-The backup process logs to syslog for auditing and virt-back works great with cron for scheduling outages.
-Virt-back has been placed in the public domain and the latest version may be downloaded here:
-https://bitbucket.org/russellballestrini/virt-back
-    """)
+    p.set_description( DESCRIPTION )
     
     p.add_option( '-q', '--quiet', dest='quiet', action='store_true', default=False,
                   help='prevent output to stdout' )
@@ -297,7 +299,7 @@ https://bitbucket.org/russellballestrini/virt-back
     if actionsum == 1:
         return options, guests
     else:
-        exit("\nYou must have 1 action, no more, no less.\n\nRun 'virt-back -h' for help.\n")
+        exit("\nYou must have 1 action, no more, no less.\n\nRun 'virt-back --help' for help.\n")
 
 if __name__ == '__main__':
     """main application logic"""
@@ -319,7 +321,7 @@ if __name__ == '__main__':
                 except libvirt.libvirtError:
                     pass # logit was registered to libvirt error handler
         else:
-            exit("\nYou must have at lease 1 dom name.\n\nRun 'virt-back -h' for help.\n")
+            exit("\nYou must have at lease 1 dom name.\n\nRun 'virt-back --help' for help.\n")
 
     else:  
         if options.rebootall or options.shutdownall or options.backupall or options.infoall:
