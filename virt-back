@@ -169,21 +169,24 @@ def reboot( domList ):
     
 def info( domList ):
     """Accept a list of dom objects, attempt to display info for all"""
-    invoke( domList, 'name' )
-    invoke( domList, 'info')
-    if check_all_running( domList ): print "All guests are running"
-    if check_all_shutoff( domList ): print "All guests are shut off"
+    #invoke( domList, 'name' )
+    #invoke( domList, 'info')
+    if check_all_running( domList ): print "NOTE: All guests are running"
+    if check_all_shutoff( domList ): print "NOTE: All guests are shut off"
+    
     print ''
     print 'running guests: ' + ', '.join( [ dom.name() for dom in get_all_running( domList ) ] )
     print 'shutoff guests: ' + ', '.join( [ dom.name() for dom in get_all_shutoff( domList ) ] )
     print ''
+    print 'DomName'.ljust(16) + 'Memory(MB)'.ljust(12) + 'vCPUs'.ljust(8) + 'CPUtime(ns)'
+    print '========================================================================'
     for dom in domList:
-        print dom.name()
-        print 'Consumed Memory:', dom.info()[2]/1024, 'MB'
-        print 'Allocated Memory:', dom.info()[1]/1024, 'MB'
-        print 'Allocated vCPUs:', dom.info()[3]
-        print 'CPU time:', dom.info()[4], 'nanoseconds'
-        print ''
+        name = dom.name()
+        rams = str(dom.info()[2]/1024) + '/' + str(dom.info()[1]/1024)
+        cpus = str(dom.info()[3])
+        time = str(dom.info()[4])
+        print name.ljust(16) + rams.ljust(12) + cpus.ljust(8) + time
+
 
 def check_all_running( domList ):
     """Accept a list of dom objects, check if all guest dom are active"""
