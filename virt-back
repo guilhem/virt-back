@@ -178,14 +178,14 @@ def info( domList ):
     print 'running guests: ' + ', '.join( [ dom.name() for dom in get_all_running( domList ) ] )
     print 'shutoff guests: ' + ', '.join( [ dom.name() for dom in get_all_shutoff( domList ) ] )
     print ''
-    print 'DomName'.ljust(16) + 'Memory(MB)'.ljust(12) + 'vCPUs'.ljust(8) + 'CPUtime(ns)'
-    print '========================================================================'
+    print 'DomName'.ljust(16) + 'Memory MB'.rjust(12) + 'vCPUs'.rjust(8) + 'CPUtime ms'.rjust(18)
+    print '======================================================'
     for dom in domList:
         name = dom.name()
         rams = str(dom.info()[2]/1024) + '/' + str(dom.info()[1]/1024)
         cpus = str(dom.info()[3])
-        time = str(dom.info()[4])
-        print name.ljust(16) + rams.ljust(12) + cpus.ljust(8) + time
+        time = str(dom.info()[4]/1000000)
+        print name.ljust(16) + rams.rjust(12) + cpus.rjust(8) + time.rjust(18)
 
 
 def check_all_running( domList ):
