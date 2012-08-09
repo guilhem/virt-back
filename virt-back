@@ -24,7 +24,7 @@ from time import sleep
 from datetime import date
 from sys import exit
 from optparse import OptionParser, OptionGroup
-from os.path import isfile
+from os import path
 from os import remove
 from shutil import move, copy2
 
@@ -60,7 +60,7 @@ def invoke( domList, method ):
             pass
 
 def backup( domList ):
-    """ Accept a domList, run backup proceedure on each """
+    """ Accept a domList, run backup proceedure on each dom"""
 
     for dom in domList:
     
@@ -70,62 +70,80 @@ def backup( domList ):
             shutdown([dom])
             
         if dom.isActive(): # if dom is active, error
-            logit( 'error', 'we could not shutdown or destroy %s and the BACKUP FAILED!' % dom.name() )
+            logit(
+              'error', 
+              'unable to shutdown or destroy %s and BACKUP FAILED!' % dom.name()
+            )
+            continue # skip to the next dom
 
-        else: # backup
-            xml = dom.XMLDesc( 0 )
-            xmlfile = options.backpath + dom.name() + '.xml'
-            f = open( xmlfile, 'w')
-            f.write( xml )
-            f.close()
-            disklist = findall( "<source file='(.*)'/>\n", xml )
+        xml = dom.XMLDesc( 0 )
+        xmlfile = path.join( options.backpath, dom.name() + '.xml' )
+        f = open( xmlfile, 'w')
+        f.write( xml )
+        f.close()
+        disklist = findall( "<source file='(.*)'/>\n", xml )
 
-            logit( 'backup', 'invoking backup for ' + dom.name() )
+        logit( 'backup', 'invoking backup for ' + dom.name() )
+        
+        for disk_source in disklist:
+            disk_file = disk_source.split('/')[-1]
+            disk_dest = path.join( options.backpath, disk_file )
+
+            logit(
+              'backup', 
+              'copying %s to %s for %s' % (disk_source, disk_dest, dom.name())
+            )
+            copy2( disk_source, disk_dest )
             
-	    for disk_source in disklist:
-                disk_dest = options.backpath + disk_source.split('/')[-1]
-                logit( 'backup', 
-		  'copying %s to %s for %s' % (disk_source, disk_dest, dom.name())
-		)
-                copy2( disk_source, disk_dest )
-            
-            if recreate: # determine if guest should be started up after backup
-                create([dom]) # start dom
+        if recreate: # if true, start guest after backup
+            create([dom]) # start dom
 
-            if options.nogzip: # skip gzip logic 
-                logit( 'backup', 'finished backup for ' + dom.name() )
-                continue
-
-            if options.tardate: tarpath = options.backpath + dom.name() + '-' + TODAY + '.tar.gz'
-            else: tarpath = options.backpath + dom.name() + '.tar.gz'
-            
-            if isfile( tarpath ): # if the file exists, rotate up to 3 version
-                logit( 'backup', 'rotating backup files for ' + dom.name() )
-                try: remove( tarpath + '.2' )
-                except OSError: pass
-                
-                try: move( tarpath + '.1', tarpath + '.2' )
-                except IOError: pass
-                
-                move( tarpath, tarpath + '.1' )
-
-            logit( 'backup', 'gzipping files for %s to %s' % (dom.name(), tarpath) )
-            tar = tarfile.open( tarpath, 'w:gz' )
-
-            logit( 'backup', 'gzipping %s for %s' % (xmlfile, dom.name()) )
-            tar.add( xmlfile ) # add xml to tar
-            remove( xmlfile ) # cleanup tmp files
-
-            for disk_source in disklist:
-                disk_dest = options.backpath + disk_source.split('/')[-1]
-
-                logit( 'backup', 'gzipping %s for %s' % (disk_dest, dom.name()) )
-                tar.add( disk_dest ) # add img to tar 
-                remove( disk_dest ) # cleanup tmp files
-            
-	    tar.close()
-
+        if options.nogzip: # skip gzip logic 
             logit( 'backup', 'finished backup for ' + dom.name() )
+            continue # skip to next dom
+
+        tarfilename = dom.name() + '.tar.gz'
+        if options.tardate: 
+            tarfilename = dom.name() + '-' + TODAY + '.tar.gz'
+
+        tarpath = path.join( options.backpath, tarfilename )
+            
+        if path.isfile( tarpath ): # if file exists, rotate 3 versions
+            logit( 'backup', 'rotating backup files for ' + dom.name() )
+            try: remove( tarpath + '.2' )
+            except OSError: pass
+                
+            try: move( tarpath + '.1', tarpath + '.2' )
+            except IOError: pass
+                
+            move( tarpath, tarpath + '.1' )
+
+        logit( 
+          'backup', 
+          'gzipping files for %s to %s' % (dom.name(), tarpath)
+        )
+        tar = tarfile.open( tarpath, 'w:gz' )
+
+        logit( 
+          'backup', 
+          'gzipping %s for %s' % (xmlfile, dom.name())
+        )
+        tar.add( xmlfile ) # add xml to tar
+        remove( xmlfile ) # cleanup tmp files
+
+        for disk_source in disklist:
+            disk_file = disk_source.split('/')[-1]
+            disk_dest = path.join( options.backpath, disk_file )
+            logit(
+              'backup', 
+              'gzipping %s for %s' % (disk_dest, dom.name())
+            )
+            tar.add( disk_dest ) # add img to tar 
+            remove( disk_dest ) # cleanup tmp files
+            
+        tar.close()
+
+        logit( 'backup', 'finished backup for ' + dom.name() )
             
 def shutdown( domList, wait=180 ):
     """Accept a list of dom objects, attempt to shutdown the active ones"""
@@ -240,8 +258,8 @@ def getoptions():
     p.add_option( '-g', '--no-gzip', dest='nogzip', action='store_true', default=False,
                   help='do not gzip or tar the resulting files' )
 
-    p.add_option( '-p', '--path', dest='backpath', metavar="'PATH'", default='/KVMBACK/',
-                  help="backup path & trailing slash [default: '/KVMBACK/']" )
+    p.add_option( '-p', '--path', dest='backpath', metavar="'PATH'", default='/KVMBACK',
+                  help="backup path [default: '/KVMBACK']" )
     
     p.add_option( '-u', '--uri', dest='uri', metavar="'URI'",
                   help="optional hypervisor uri" )
