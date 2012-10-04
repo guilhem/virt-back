@@ -108,15 +108,9 @@ def backup( domList ):
 
         tarpath = path.join( options.backpath, tarfilename )
             
-        if path.isfile( tarpath ): # if file exists, rotate 3 versions
+        if path.isfile( tarpath ): # if file exists, run rotate
             logit( 'backup', 'rotating backup files for ' + dom.name() )
-            try: remove( tarpath + '.2' )
-            except OSError: pass
-                
-            try: move( tarpath + '.1', tarpath + '.2' )
-            except IOError: pass
-                
-            move( tarpath, tarpath + '.1' )
+            rotate( tarpath, options.retention )
 
         logit( 
           'backup', 
@@ -241,6 +235,16 @@ def logit( context, message ):
     syslog.syslog( message )
     syslog.closelog()
 
+def rotate( target, retention = 3 ):
+    """file rotation routine"""
+    for i in range( retention-2, 0, -1 ): # count backwards
+        old_name = "%s.%s" % ( target, i )
+        new_name = "%s.%s" % ( target, i + 1 )
+        try: move( old_name, new_name  )
+        except IOError: pass
+    move( target, target + '.1' )
+
+
 def getoptions():
     """fetch cli args, parse and map to python, test sanity"""
 
@@ -257,6 +261,9 @@ def getoptions():
 
     p.add_option( '-g', '--no-gzip', dest='nogzip', action='store_true', default=False,
                   help='do not gzip or tar the resulting files' )
+
+    p.add_option( '-a', '--retention', dest='retention', metavar="amount", default=3,
+                  type='int', help="backups to retain [default: 3]" )
 
     p.add_option( '-p', '--path', dest='backpath', metavar="'PATH'", default='/KVMBACK',
                   help="backup path [default: '/KVMBACK']" )
